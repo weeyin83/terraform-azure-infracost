@@ -74,21 +74,50 @@ jobs:
         with:
           ref: '${{ github.event.pull_request.base.ref }}'
 
+      - name: Write terraform.tfvars.json from secrets (base)
+        shell: bash
+        run: |
+          cat > terraform.tfvars.json <<'EOF'
+          {
+            "azure_subscription_id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          }
+          EOF
+
+      - name: Terraform init (no backend, base)
+        run: terraform init -backend=false
+
       - name: Generate Infracost cost estimate baseline
         run: |
           infracost breakdown --path=. \
                               --format=json \
+                              --terraform-var-file=terraform.tfvars.json \
                               --out-file=/tmp/infracost-base.json
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
 
+      - name: Write terraform.tfvars.json from secrets (PR)
+        shell: bash
+        run: |
+          cat > terraform.tfvars.json <<'EOF'
+          {
+            "azure_subscription_id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          }
+          EOF
+
+      - name: Terraform init (no backend, PR)
+        run: terraform init -backend=false
+
       - name: Generate Infracost diff
         run: |
           infracost diff --path=. \
                           --format=json \
+                          --terraform-var-file=terraform.tfvars.json \
                           --compare-to=/tmp/infracost-base.json \
                           --out-file=/tmp/infracost.json
+
+      - name: Show Infracost diff file size
+        run: ls -lh /tmp/infracost.json || true
 
       - name: Post Infracost comment
         run: |
@@ -111,10 +140,23 @@ jobs:
       - name: Checkout main/master branch
         uses: actions/checkout@v4
 
+      - name: Write terraform.tfvars.json from secrets (default branch)
+        shell: bash
+        run: |
+          cat > terraform.tfvars.json <<'EOF'
+          {
+            "azure_subscription_id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          }
+          EOF
+
+      - name: Terraform init (no backend, default branch)
+        run: terraform init -backend=false
+
       - name: Run Infracost on default branch and update Infracost Cloud
         run: |
           infracost breakdown --path=. \
                     --format=json \
+                    --terraform-var-file=terraform.tfvars.json \
                     --out-file=infracost.json
 
           infracost upload --path=infracost.json || echo "Always pass main branch runs even if there are policy failures"
